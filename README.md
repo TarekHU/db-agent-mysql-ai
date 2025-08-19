@@ -27,10 +27,14 @@ Built for developers, data analysts, and QA engineers, this tool helps:
 
 db-agent-app/
 ├── app.py # Flask application (main logic)
+
 ├── config.py # DB and API credentials
+
 ├── templates/
 │ └── index.html # Chat interface
+
 ├── requirements.txt # Python dependencies
+
 └── README.md
 ---
 
