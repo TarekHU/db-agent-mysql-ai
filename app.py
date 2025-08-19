@@ -210,10 +210,11 @@ def run_sql():
     return execute_sql_and_return(sql_query)
 
 # -----------------------------------------------------------------------------
-# SQL Executor
+# SQL Executor with Retry
 # -----------------------------------------------------------------------------
-def execute_sql_and_return(sql_query):
-    """Execute SQL safely and return JSON response."""
+def execute_sql_and_return(sql_query, retry=True):
+    """Execute SQL safely, retry via AI if it fails."""
+    global last_generated_sql
     conn = None
     try:
         # Remove Markdown code fences if present
@@ -235,6 +236,38 @@ def execute_sql_and_return(sql_query):
         error_msg = f"❌ SQL execution failed: {str(e)}"
         print(error_msg)
         traceback.print_exc()
+
+        # Retry with AI only once
+        if retry and last_generated_sql:
+            try:
+                fix_prompt = f"""
+The following SQL query failed with error: {str(e)}
+
+SQL:
+{last_generated_sql}
+
+Please suggest a corrected version of this query based ONLY on the schema.
+"""
+                fixed_response = chat_with_local_model(
+                    f"Schema:\n{schema_columns}\nRelationships:\n{schema_relationships}",
+                    fix_prompt,
+                    Config.OPENROUTER_API_KEY
+                )
+
+                if "SQL:" in fixed_response:
+                    fixed_sql = fixed_response.split("SQL:")[-1].strip().replace("```sql", "").replace("```", "").strip()
+                    last_generated_sql = fixed_sql
+                    print(f"🔄 Retrying with fixed SQL: {fixed_sql}")
+                    return execute_sql_and_return(fixed_sql, retry=False)
+
+                return jsonify({"error": error_msg, "ai_response": fixed_response}), 500
+
+            except Exception as retry_err:
+                retry_msg = f"❌ Retry with AI failed: {str(retry_err)}"
+                print(retry_msg)
+                traceback.print_exc()
+                return jsonify({"error": error_msg, "retry_error": retry_msg}), 500
+
         return jsonify({"error": error_msg}), 500
 
     finally:
